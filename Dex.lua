@@ -12364,34 +12364,44 @@ local EmbeddedModules = {
 			}
 
 			local function executeToolCall(toolName, args)
+				local lastYield = os.clock()
+				local function checkYield()
+					if (os.clock() - lastYield) > 0.03 then
+						task.wait()
+						lastYield = os.clock()
+					end
+				end
+
 				if toolName == "glob" then
 					local pattern = args.pattern or ""
 					local parent = getObjectFromPath(args.parentPath or "game")
 					if not parent then return "Error: Parent path not found." end
-					
 					local matches = {}
 					local count = 0
-					local patLower = pattern:lower():gsub("%*", ".*")
-					
+					local patLower = pattern:lower():gsub("%%*", ".*")
 					local function search(inst)
-						if count >= 40 then return end
-						local name = inst.Name
-						local className = inst.ClassName
+						if count >= 30 then return end
+						checkYield()
+						local s1, name = pcall(function() return inst.Name end)
+						local s2, className = pcall(function() return inst.ClassName end)
+						if not s1 or not s2 then return end
 						if name:lower():find(patLower) or className:lower():find(patLower) then
 							count = count + 1
-							local p = inst:GetFullName()
-							table.insert(matches, p .. " [" .. className .. "]")
+							table.insert(matches, inst:GetFullName() .. " [" .. className .. "]")
 						end
-						for _, child in ipairs(inst:GetChildren()) do
-							search(child)
-							if count >= 40 then break end
+						local ch = {}
+						pcall(function() ch = inst:GetChildren() end)
+						for _, child in ipairs(ch) do
+							local cn = ""
+							pcall(function() cn = child.Name end)
+							if cn ~= "CoreGui" and cn ~= "CorePackages" and cn ~= "RobloxPluginGuiService" then
+								search(child)
+								if count >= 30 then break end
+							end
 						end
 					end
-					
 					pcall(search, parent)
-					if #matches == 0 then
-						return "No instances found matching pattern: " .. pattern
-					end
+					if #matches == 0 then return "No instances found matching: " .. pattern end
 					return "Found " .. #matches .. " instances:\n" .. table.concat(matches, "\n")
 
 				elseif toolName == "grep" then
@@ -12399,69 +12409,55 @@ local EmbeddedModules = {
 					local searchType = args.searchType or "all"
 					local matches = {}
 					local count = 0
-
-					local function searchScripts()
-						for _, inst in ipairs(game:GetDescendants()) do
-							if count >= 20 then break end
-							if inst:IsA("LuaSourceContainer") then
-								local src = ""
-								if inst:IsA("Script") or inst:IsA("LocalScript") or inst:IsA("ModuleScript") then
+					local searched = 0
+					local function doSearch(container)
+						pcall(function()
+							for _, inst in ipairs(container:GetDescendants()) do
+								if count >= 15 then break end
+								searched = searched + 1
+								if searched % 50 == 0 then checkYield() end
+								if (searchType == "script" or searchType == "all") and inst:IsA("LuaSourceContainer") then
+									local src = ""
 									pcall(function() src = inst.Source end)
-									if (src == "" or not src) and env.decompile and env.isViableDecompileScript(inst) then
-										pcall(function() src = env.decompile(inst) or "" end)
+									if src and src ~= "" and src:lower():find(pattern, 1, true) then
+										count = count + 1
+										table.insert(matches, "Script: " .. inst:GetFullName() .. " (" .. inst.ClassName .. ")")
 									end
-								end
-								if src and src ~= "" and src:lower():find(pattern, 1, true) then
+								elseif (searchType == "property" or searchType == "all") and inst.Name:lower():find(pattern, 1, true) then
 									count = count + 1
-									table.insert(matches, "Script: " .. inst:GetFullName() .. " (" .. inst.ClassName .. ")")
+									table.insert(matches, "Instance: " .. inst:GetFullName() .. " [" .. inst.ClassName .. "]")
 								end
 							end
-						end
+						end)
 					end
-
-					local function searchProps()
-						for _, inst in ipairs(game:GetDescendants()) do
-							if count >= 20 then break end
-							local nameMatch = inst.Name:lower():find(pattern, 1, true)
-							if nameMatch then
-								count = count + 1
-								table.insert(matches, "Instance: " .. inst:GetFullName() .. " [" .. inst.ClassName .. "]")
-							end
-						end
+					for _, svc in ipairs({workspace, game:GetService("ReplicatedStorage"), game:GetService("StarterGui"), game:GetService("StarterPlayer"), game:GetService("Players")}) do
+						if count >= 15 then break end
+						pcall(doSearch, svc)
 					end
-
-					if searchType == "script" or searchType == "all" then pcall(searchScripts) end
-					if (searchType == "property" or searchType == "all") and count < 20 then pcall(searchProps) end
-
-					if #matches == 0 then
-						return "No matches found for pattern: " .. args.pattern
-					end
-					return "Matches found:\n" .. table.concat(matches, "\n")
+					if #matches == 0 then return "No matches found for: " .. args.pattern end
+					return "Matches:\n" .. table.concat(matches, "\n")
 
 				elseif toolName == "read" then
 					local inst = getObjectFromPath(args.instancePath)
-					if not inst then return "Error: Instance path not found: " .. tostring(args.instancePath) end
-					
+					if not inst then return "Error: Instance not found: " .. tostring(args.instancePath) end
 					local info = {}
 					table.insert(info, "Path: " .. inst:GetFullName())
 					table.insert(info, "ClassName: " .. inst.ClassName)
-					table.insert(info, "DebugId: " .. inst:GetDebugId())
-					
-					local children = inst:GetChildren()
-					table.insert(info, "Children (" .. #children .. "):")
-					for i = 1, math.min(#children, 25) do
-						table.insert(info, "  - " .. children[i].Name .. " [" .. children[i].ClassName .. "]")
+					pcall(function() table.insert(info, "DebugId: " .. inst:GetDebugId()) end)
+					local ch = {}
+					pcall(function() ch = inst:GetChildren() end)
+					table.insert(info, "Children (" .. #ch .. "):")
+					for i = 1, math.min(#ch, 25) do
+						checkYield()
+						table.insert(info, "  - " .. ch[i].Name .. " [" .. ch[i].ClassName .. "]")
 					end
-
 					if inst:IsA("LuaSourceContainer") then
 						local src = ""
 						pcall(function() src = inst.Source end)
 						if (src == "" or not src) and env.decompile and env.isViableDecompileScript(inst) then
 							pcall(function() src = env.decompile(inst) or "" end)
 						end
-						if src and src ~= "" then
-							table.insert(info, "\nSource Code:\n```lua\n" .. src:sub(1, 2500) .. "\n```")
-						end
+						if src and src ~= "" then table.insert(info, "\nSource:\n```lua\n" .. src:sub(1, 2500) .. "\n```") end
 					end
 					return table.concat(info, "\n")
 
@@ -12470,106 +12466,68 @@ local EmbeddedModules = {
 					if not code then return "Error: No code provided." end
 					local fn, err = loadstring(code)
 					if not fn then return "Compile Error: " .. tostring(err) end
-					local success, result = pcall(fn)
+					local success, result
+					local done = false
+					task.spawn(function() success, result = pcall(fn) done = true end)
+					local startT = os.clock()
+					while not done and (os.clock() - startT) < 3.0 do task.wait(0.05) end
+					if not done then return "Executed in background (non-blocking)." end
 					if not success then return "Runtime Error: " .. tostring(result) end
-					return "Executed Successfully. Return value: " .. tostring(result)
+					return "Executed OK. Return: " .. tostring(result)
 
 				elseif toolName == "press_key" then
 					local keyStr = args.key or "W"
 					local duration = tonumber(args.duration) or 0.5
-					local keyEnum = Enum.KeyCode[keyStr] or Enum.KeyCode.W
-					
-					pcall(function()
-						if service.VirtualInputManager then
-							service.VirtualInputManager:SendKeyEvent(true, keyEnum, false, game)
-							task.wait(duration)
-							service.VirtualInputManager:SendKeyEvent(false, keyEnum, false, game)
-						else
-							local char = plr.Character
-							local hum = char and char:FindFirstChild("Humanoid")
+					task.spawn(function()
+						pcall(function()
+							local hum = plr.Character and plr.Character:FindFirstChild("Humanoid")
 							if hum then
-								local moveDir = Vector3.new(0, 0, -1)
-								if keyStr == "S" then moveDir = Vector3.new(0, 0, 1)
-								elseif keyStr == "A" then moveDir = Vector3.new(-1, 0, 0)
-								elseif keyStr == "D" then moveDir = Vector3.new(1, 0, 0)
+								local d = Vector3.new(0,0,-1)
+								if keyStr == "S" then d = Vector3.new(0,0,1)
+								elseif keyStr == "A" then d = Vector3.new(-1,0,0)
+								elseif keyStr == "D" then d = Vector3.new(1,0,0)
 								elseif keyStr == "Space" then hum.Jump = true end
-								hum:Move(moveDir, true)
+								hum:Move(d, true)
 								task.wait(duration)
 								hum:Move(Vector3.new(0,0,0), true)
 							end
-						end
+						end)
 					end)
-					return "Pressed key " .. keyStr .. " for " .. duration .. "s"
+					return "Pressed " .. keyStr .. " for " .. duration .. "s"
 
 				elseif toolName == "move_to" then
 					local targetStr = args.target or ""
-					local char = plr.Character
-					local hrp = char and char:FindFirstChild("HumanoidRootPart")
-					if not hrp then return "Error: Character HumanoidRootPart not found." end
-
-					local targetInst = getObjectFromPath(targetStr)
-					if targetInst then
-						if targetInst:IsA("BasePart") then
-							hrp.CFrame = targetInst.CFrame * CFrame.new(0, 3, 0)
-							return "Moved to part: " .. targetInst:GetFullName()
-						elseif targetInst:IsA("Model") then
-							hrp.CFrame = targetInst:GetPivot() * CFrame.new(0, 3, 0)
-							return "Moved to model: " .. targetInst:GetFullName()
-						end
-					end
-
-					local x, y, z = targetStr:match("([%d%.%-]+)%s*,%s*([%d%.%-]+)%s*,%s*([%d%.%-]+)")
-					if x and y and z then
-						hrp.CFrame = CFrame.new(tonumber(x), tonumber(y), tonumber(z))
-						return "Teleported to Vector3(" .. x .. ", " .. y .. ", " .. z .. ")"
-					end
-					return "Error: Could not parse move target: " .. targetStr
+					local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+					if not hrp then return "Error: HumanoidRootPart not found." end
+					local ti = getObjectFromPath(targetStr)
+					if ti and ti:IsA("BasePart") then hrp.CFrame = ti.CFrame * CFrame.new(0,3,0) return "Moved to: " .. ti:GetFullName()
+					elseif ti and ti:IsA("Model") then hrp.CFrame = ti:GetPivot() * CFrame.new(0,3,0) return "Moved to: " .. ti:GetFullName() end
+					local coords = {targetStr:match("([%d%.%-]+)%s*,%s*([%d%.%-]+)%s*,%s*([%d%.%-]+)")}
+					if #coords >= 3 then hrp.CFrame = CFrame.new(tonumber(coords[1]),tonumber(coords[2]),tonumber(coords[3])) return "Teleported to " .. table.concat(coords, ", ") end
+					return "Error: Could not parse target: " .. targetStr
 
 				elseif toolName == "set_property" then
 					local inst = getObjectFromPath(args.instancePath)
 					if not inst then return "Error: Instance not found." end
 					local prop = args.propertyName
 					local valStr = tostring(args.value)
-
 					local val = valStr
-					if valStr == "true" then val = true
-					elseif valStr == "false" then val = false
-					elseif tonumber(valStr) then val = tonumber(valStr)
-					end
-
-					local success, err = pcall(function() inst[prop] = val end)
-					if success then
-						return "Successfully set " .. inst.Name .. "." .. prop .. " = " .. tostring(val)
-					else
-						return "Failed to set property: " .. tostring(err)
-					end
+					if valStr == "true" then val = true elseif valStr == "false" then val = false elseif tonumber(valStr) then val = tonumber(valStr) end
+					local s, e = pcall(function() inst[prop] = val end)
+					if s then return "Set " .. inst.Name .. "." .. prop .. " = " .. tostring(val) else return "Failed: " .. tostring(e) end
 
 				elseif toolName == "fire_remote" then
 					local inst = getObjectFromPath(args.targetPath)
-					if not inst then return "Error: Remote target not found." end
+					if not inst then return "Error: Remote not found." end
 					local act = args.action
 					local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-
-					if inst:IsA("RemoteEvent") and act == "FireServer" then
-						inst:FireServer()
-						return "Fired RemoteEvent: " .. inst:GetFullName()
-					elseif inst:IsA("RemoteFunction") and act == "InvokeServer" then
-						local res = inst:InvokeServer()
-						return "Invoked RemoteFunction: " .. inst:GetFullName() .. " -> " .. tostring(res)
-					elseif inst:IsA("BindableEvent") then
-						inst:Fire()
-						return "Fired BindableEvent: " .. inst:GetFullName()
-					elseif inst:IsA("ClickDetector") and fireclickdetector then
-						fireclickdetector(inst)
-						return "Fired ClickDetector on " .. inst:GetFullName()
-					elseif inst:IsA("ProximityPrompt") and fireproximityprompt then
-						fireproximityprompt(inst)
-						return "Fired ProximityPrompt on " .. inst:GetFullName()
-					elseif inst:IsA("TouchTransmitter") and hrp and firetouchinterest then
-						firetouchinterest(hrp, inst.Parent, 0)
-						return "Fired TouchTransmitter on " .. inst.Parent:GetFullName()
-					end
-					return "Executed remote action on " .. inst:GetFullName()
+					if inst:IsA("RemoteEvent") and act == "FireServer" then inst:FireServer() return "Fired: " .. inst:GetFullName()
+					elseif inst:IsA("RemoteFunction") and act == "InvokeServer" then local r pcall(function() r = inst:InvokeServer() end) return "Invoked: " .. inst:GetFullName() .. " -> " .. tostring(r)
+					elseif inst:IsA("BindableEvent") then inst:Fire() return "Fired: " .. inst:GetFullName()
+					elseif inst:IsA("ClickDetector") and fireclickdetector then fireclickdetector(inst) return "Clicked: " .. inst:GetFullName()
+					elseif inst:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(inst) return "Prompted: " .. inst:GetFullName()
+					elseif inst:IsA("TouchTransmitter") and hrp and firetouchinterest then firetouchinterest(hrp, inst.Parent, 0) return "Touched: " .. inst.Parent:GetFullName() end
+					return "Action done on " .. inst:GetFullName()
 				end
 
 				return "Unknown tool: " .. tostring(toolName)
