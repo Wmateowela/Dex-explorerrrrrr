@@ -1,4 +1,3 @@
---pasawanakanara 
 
 --[[
 	Dex
