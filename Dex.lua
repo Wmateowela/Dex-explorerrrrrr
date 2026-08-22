@@ -12949,7 +12949,7 @@ local EmbeddedModules = {
 			function AIAssistant.Init()
 				window = Lib.Window.new()
 				AIAssistant.Window = window
-				window:SetTitle("AI Explorer & Assistant")
+				window:SetTitle("AI Explorer && Assistant")
 				window.GuiElems.Main.Size = UDim2.new(0, 360, 0, 520)
 				window.GuiElems.Line.Position = UDim2.new(0, 0, 0, 22)
 
