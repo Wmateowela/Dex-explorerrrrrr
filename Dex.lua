@@ -1,4 +1,4 @@
-
+--wwww
 --[[
 	Dex
 	Created by Moon
@@ -12673,114 +12673,115 @@ local EmbeddedModules = {
 			end
 
 			local function renderAssistantMarkdown(container, rawText)
-				local parts = {}
-				local lastPos = 1
+				local pos = 1
+				local len = #rawText
 
-				for startPos, lang, codeContent, endPos in rawText:gmatch("()```([%w_]*)\n?(.-)```()") do
-					if startPos > lastPos then
-						table.insert(parts, {Type = "text", Content = rawText:sub(lastPos, startPos - 1)})
-					end
-					table.insert(parts, {Type = "code", Language = lang ~= "" and lang or "lua", Content = codeContent})
-					lastPos = endPos
+				local function addTextLabel(txt)
+					if txt:gsub("%s+", "") == "" then return end
+					local formatted = txt
+					formatted = formatted:gsub("%*%*(.-)%*%*", "<b>%1</b>")
+					formatted = formatted:gsub("%*(.-)%*", "<i>%1</i>")
+					formatted = formatted:gsub("`([^`]+)`", "<font color=\"#FFB84D\"><b>%1</b></font>")
+
+					createSimple("TextLabel", {
+						Size = UDim2.new(1, 0, 0, 0),
+						AutomaticSize = Enum.AutomaticSize.Y,
+						BackgroundTransparency = 1,
+						Text = formatted,
+						TextColor3 = Color3.fromRGB(240, 240, 240),
+						RichText = true,
+						Font = 3,
+						TextSize = 14,
+						TextWrapped = true,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						Parent = container
+					})
 				end
-				if lastPos <= #rawText then
-					table.insert(parts, {Type = "text", Content = rawText:sub(lastPos)})
-				end
 
-				for _, part in ipairs(parts) do
-					if part.Type == "text" then
-						local text = part.Content
-						if text:gsub("%s+", "") ~= "" then
-							local formatted = text
-							formatted = formatted:gsub("%*%*(.-)%*%*", "<b>%1</b>")
-							formatted = formatted:gsub("%*(.-)%*", "<i>%1</i>")
-							formatted = formatted:gsub("`([^`]+)`", "<font color=\"#FFB84D\"><b>%1</b></font>")
+				local function addCodeBlock(lang, codeText)
+					local codeBox = createSimple("Frame", {
+						Size = UDim2.new(1, 0, 0, 0),
+						AutomaticSize = Enum.AutomaticSize.Y,
+						BackgroundColor3 = Color3.fromRGB(20, 22, 26),
+						BorderSizePixel = 0,
+						Parent = container
+					})
+					createSimple("UICorner", {CornerRadius = UDim.new(0, 5), Parent = codeBox})
 
-							createSimple("TextLabel", {
-								Size = UDim2.new(1, 0, 0, 0),
-								AutomaticSize = Enum.AutomaticSize.Y,
-								BackgroundTransparency = 1,
-								Text = formatted,
-								TextColor3 = Color3.fromRGB(240, 240, 240),
-								RichText = true,
-								Font = 3,
-								TextSize = 14,
-								TextWrapped = true,
-								TextXAlignment = Enum.TextXAlignment.Left,
-								Parent = container
-							})
-						end
-					elseif part.Type == "code" then
-						local codeText = part.Content
-						local codeBox = createSimple("Frame", {
-							Size = UDim2.new(1, 0, 0, 0),
-							AutomaticSize = Enum.AutomaticSize.Y,
-							BackgroundColor3 = Color3.fromRGB(24, 24, 28),
-							BorderSizePixel = 0,
-							Parent = container
-						})
-						createSimple("UICorner", {CornerRadius = UDim.new(0, 5), Parent = codeBox})
-						
-						local header = createSimple("Frame", {
-							Size = UDim2.new(1, 0, 0, 24),
-							BackgroundColor3 = Color3.fromRGB(36, 36, 42),
-							BorderSizePixel = 0,
-							Parent = codeBox
-						})
-						createSimple("UICorner", {CornerRadius = UDim.new(0, 5), Parent = header})
-						
-						createSimple("TextLabel", {
-							Size = UDim2.new(0, 100, 1, 0),
-							Position = UDim2.new(0, 8, 0, 0),
-							BackgroundTransparency = 1,
-							Text = "💻 " .. (part.Language ~= "" and part.Language:upper() or "LUA"),
-							TextColor3 = Color3.fromRGB(180, 180, 180),
-							Font = 4,
-							TextSize = 12,
-							TextXAlignment = Enum.TextXAlignment.Left,
-							Parent = header
-						})
+					local header = createSimple("Frame", {
+						Size = UDim2.new(1, 0, 0, 24),
+						BackgroundColor3 = Color3.fromRGB(34, 36, 42),
+						BorderSizePixel = 0,
+						Parent = codeBox
+					})
+					createSimple("UICorner", {CornerRadius = UDim.new(0, 5), Parent = header})
 
-						local copyBtn = createSimple("TextButton", {
-							Size = UDim2.new(0, 70, 0, 18),
-							Position = UDim2.new(1, -75, 0, 3),
-							BackgroundColor3 = Settings.Theme.Button or Color3.fromRGB(60, 60, 60),
-							BorderSizePixel = 0,
-							Text = "📋 Copy",
-							TextColor3 = Color3.fromRGB(255, 255, 255),
-							Font = 3,
-							TextSize = 12,
-							Parent = header
-						})
-						createSimple("UICorner", {CornerRadius = UDim.new(0, 3), Parent = copyBtn})
+					createSimple("TextLabel", {
+						Size = UDim2.new(0, 120, 1, 0),
+						Position = UDim2.new(0, 8, 0, 0),
+						BackgroundTransparency = 1,
+						Text = "💻 " .. (lang ~= "" and lang:upper() or "LUAU CODE"),
+						TextColor3 = Color3.fromRGB(180, 180, 180),
+						Font = 4,
+						TextSize = 12,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						Parent = header
+					})
 
-						copyBtn.MouseButton1Click:Connect(function()
-							pcall(function() env.setclipboard(codeText) end)
-							copyBtn.Text = "✅ Copied!"
-							task.delay(1.5, function()
-								if copyBtn then copyBtn.Text = "📋 Copy" end
-							end)
+					local copyBtn = createSimple("TextButton", {
+						Size = UDim2.new(0, 75, 0, 18),
+						Position = UDim2.new(1, -80, 0, 3),
+						BackgroundColor3 = Settings.Theme.Button or Color3.fromRGB(60, 60, 60),
+						BorderSizePixel = 0,
+						Text = "📋 Copy Code",
+						TextColor3 = Color3.fromRGB(255, 255, 255),
+						Font = 3,
+						TextSize = 11,
+						Parent = header
+					})
+					createSimple("UICorner", {CornerRadius = UDim.new(0, 3), Parent = copyBtn})
+
+					copyBtn.MouseButton1Click:Connect(function()
+						pcall(function() env.setclipboard(codeText) end)
+						copyBtn.Text = "✅ Copied!"
+						task.delay(1.5, function()
+							if copyBtn then copyBtn.Text = "📋 Copy Code" end
 						end)
+					end)
 
-						createSimple("TextLabel", {
-							Size = UDim2.new(1, -16, 0, 0),
-							Position = UDim2.new(0, 8, 0, 28),
-							AutomaticSize = Enum.AutomaticSize.Y,
-							BackgroundTransparency = 1,
-							Text = codeText,
-							TextColor3 = Color3.fromRGB(173, 241, 149),
-							Font = Enum.Font.Code,
-							TextSize = 13,
-							TextWrapped = true,
-							TextXAlignment = Enum.TextXAlignment.Left,
-							Parent = codeBox
-						})
-						createSimple("UIPadding", {PaddingBottom = UDim.new(0, 8), Parent = codeBox})
+					createSimple("TextLabel", {
+						Size = UDim2.new(1, -16, 0, 0),
+						Position = UDim2.new(0, 8, 0, 28),
+						AutomaticSize = Enum.AutomaticSize.Y,
+						BackgroundTransparency = 1,
+						Text = codeText,
+						TextColor3 = Color3.fromRGB(173, 241, 149),
+						Font = Enum.Font.Code,
+						TextSize = 13,
+						TextWrapped = true,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						Parent = codeBox
+					})
+					createSimple("UIPadding", {PaddingBottom = UDim.new(0, 8), Parent = codeBox})
+				end
+
+				while pos <= len do
+					local sStart, sEnd, lang, codeContent = rawText:find("```([%w_]*)\r?\n?(.-)```", pos)
+					if sStart then
+						if sStart > pos then
+							addTextLabel(rawText:sub(pos, sStart - 1))
+						end
+						addCodeBlock(lang, codeContent)
+						pos = sEnd + 1
+					else
+						addTextLabel(rawText:sub(pos))
+						break
 					end
 				end
 			end
 
 			local function addAssistantMessage(rawText)
+				if not rawText or rawText:gsub("%s+", "") == "" then return end
 				local msgFrame = createSimple("Frame", {
 					Size = UDim2.new(1, -10, 0, 0),
 					AutomaticSize = Enum.AutomaticSize.Y,
@@ -12814,10 +12815,19 @@ local EmbeddedModules = {
 				inputTextBox.Text = ""
 				addUserMessage(userText)
 
+				local systemPrompt = [[You are an expert Agentic Luau Coding Assistant operating inside a Roblox Executor via Dex Explorer on the CLIENT side.
+
+CRITICAL RULES:
+1. CLIENT EXECUTOR CONTEXT ONLY: NEVER write Roblox Studio plugins, ServerScriptService scripts, or scripts requiring Studio permissions. ALL scripts must be client-side Luau executor scripts that run 100% bug-free in executors via loadstring.
+2. AGENTIC EXPLORATION FIRST: Before generating code or answering, ALWAYS use your tools (`glob`, `grep`, `read`) to discover the exact game structure, instance names, paths, and properties in this specific game. DO NOT guess paths!
+3. ACCURACY & ZERO BUGS: Verify object existence and properties via your tools. If the user asks to bring an object (e.g., ladder/item), search the workspace for that object first using `glob` or `grep`, find its CFrame/Position or move it, and generate a client executor script to move it or teleport the LocalPlayer to it.
+4. FULL CODE IN RESPONSE: ALWAYS output the COMPLETE, working Luau code block inside markdown code blocks (```lua ... ```). Never say "code is above" or "code uper hai" without including the full code block in your message.
+5. HUMAN LANGUAGE: Explain what actions you took step-by-step in natural, friendly human language (Urdu / Roman Urdu / English as requested by user). Use bold (**text**), italic (*text*), and code formatting.]]
+
 				if #messageHistory == 0 then
 					table.insert(messageHistory, {
 						role = "system",
-						content = "You are an AI Agent inside Roblox Dex Explorer. You have full access to explore the Roblox game codebase, inspect instances/scripts, modify properties, press keys, move local player, execute Luau code, and fire remotes using tools. Answer the user in natural human language (Urdu/Roman Urdu/English). Always explain what actions you did step-by-step and provide code snippets inside markdown ```lua code blocks."
+						content = systemPrompt
 					})
 				end
 				table.insert(messageHistory, {role = "user", content = userText})
@@ -12899,8 +12909,12 @@ local EmbeddedModules = {
 									replyContent = data.content
 								end
 
+								if replyContent and replyContent:gsub("%s+", "") ~= "" then
+									addAssistantMessage(replyContent)
+								end
+
 								if toolCalls and type(toolCalls) == "table" and #toolCalls > 0 then
-									table.insert(messageHistory, msg or {role = "assistant", tool_calls = toolCalls})
+									table.insert(messageHistory, msg or {role = "assistant", content = replyContent or "", tool_calls = toolCalls})
 									for _, tc in ipairs(toolCalls) do
 										local fn = tc["function"] or tc
 										local fnName = fn.name or tc.name
@@ -12913,19 +12927,20 @@ local EmbeddedModules = {
 											end
 										end)
 										
+										statusLabel.Text = "⏳ AI Action: Using tool " .. fnName .. "..."
 										addToolCard(fnName, args)
+										
 										local result = executeToolCall(fnName, args)
 										addToolResultCard(fnName, result)
 										
 										table.insert(messageHistory, {
 											role = "tool",
-											tool_call_id = tc.id or "call_1",
+											tool_call_id = tc.id or ("call_" .. tostring(math.random(1000, 9999))),
 											content = tostring(result)
 										})
 									end
 								elseif replyContent and replyContent ~= "" then
 									table.insert(messageHistory, {role = "assistant", content = replyContent})
-									addAssistantMessage(replyContent)
 									break
 								else
 									addAssistantMessage("API Warning: Received response but no content found.\nRaw Response: " .. tostring(response.Body:sub(1, 300)))
@@ -12941,7 +12956,7 @@ local EmbeddedModules = {
 						end
 					end
 
-					statusLabel.Text = "Status: Idle"
+					statusLabel.Text = "🤖 AI Agent (Ready)"
 					isProcessing = false
 				end)
 			end
