@@ -1,4 +1,4 @@
---wwww
+--WWWW.W
 --[[
 	Dex
 	Created by Moon
